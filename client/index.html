@@ -23,7 +23,7 @@
     <form id="form" onsubmit="return false">
       <input type="text" value="192.168.1.8:2468" id="ip_port">
       <input type="text" placeholder="message" id="message">
-      <button onclick="websocket_n.send_message()">
+      <button onclick="websocket_n.send_message(message.value)">
         Send message
       </button>
       <button onclick="websocket_n.open(ip_port.value);">

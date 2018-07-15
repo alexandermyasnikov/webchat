@@ -28,9 +28,15 @@ function websocket_new(out) {
   }
 
   this.close = function() {
-    if (this.websocket)
+    if (this.websocket) {
       this.websocket.close();
-    this.log("close \n");
+      this.log("close \n");
+    }
+  }
+
+  this.send_message = function(msg) {
+    this.websocket.send(msg.toString());
+    this.log("send: '" + msg + "' \n");
   }
 
   this.state = function() {
