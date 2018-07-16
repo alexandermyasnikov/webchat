@@ -35,7 +35,7 @@ class Logger {
 
   ~Logger( ) {
     indent -= 2;
-    fprintf(stderr, "%s %d   %*sLeaving %s\n", name, indent / 2, indent, "", function);
+    fprintf(stderr, "%s %d   %*sLeaving  %s\n", name, indent / 2, indent, "", function);
     fflush(stderr);
   }
 
