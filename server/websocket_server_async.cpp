@@ -13,11 +13,13 @@
 //
 //------------------------------------------------------------------------------
 
+#include <boost/thread/thread.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/asio/bind_executor.hpp>
 #include <boost/asio/strand.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/bind.hpp>
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
@@ -204,6 +206,35 @@ class listener : public std::enable_shared_from_this<listener>
 
 //------------------------------------------------------------------------------
 
+struct printer {
+  printer(boost::asio::io_context& io)
+    : timer_(io, boost::asio::chrono::seconds(1)), count_(0) {
+    LOGGER_SERVER;
+    timer_.async_wait(boost::bind(&printer::print, this));
+  }
+
+  ~printer() {
+    LOGGER_SERVER;
+  }
+
+  void print() {
+    LOGGER_SERVER;
+    // boost::this_thread::sleep_for(boost::chrono::seconds(3));
+    if (count_ < 100) {
+      LOG_SERVER("count: %d", count_);
+      ++count_;
+
+      timer_.expires_at(timer_.expiry() + boost::asio::chrono::seconds(1));
+      timer_.async_wait(boost::bind(&printer::print, this));
+    }
+  }
+
+  boost::asio::steady_timer timer_;
+  int count_;
+};
+
+//------------------------------------------------------------------------------
+
 int main(int argc, char* argv[])
 {
   // Check command line arguments.
@@ -220,6 +251,8 @@ int main(int argc, char* argv[])
 
   // Create and launch a listening port
   std::make_shared<listener>(ioc, tcp::endpoint{address, port})->run();
+
+  printer p(ioc);
 
   ioc.run();
 
