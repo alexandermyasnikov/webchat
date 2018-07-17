@@ -36,6 +36,12 @@ namespace websocket = boost::beast::websocket;  // from <boost/beast/websocket.h
 
 //------------------------------------------------------------------------------
 
+struct listener;
+struct session;
+struct game_loop;
+
+//------------------------------------------------------------------------------
+
 // Report a failure
 void fail(boost::system::error_code ec, char const* what) {
   LOGGER_SERVER;
@@ -43,8 +49,7 @@ void fail(boost::system::error_code ec, char const* what) {
 }
 
 // Echoes back all received WebSocket messages
-class session : public std::enable_shared_from_this<session>
-{
+class session : public std::enable_shared_from_this<session> {
   websocket::stream<tcp::socket> ws_;
   boost::asio::strand<boost::asio::io_context::executor_type> strand_;
   boost::beast::multi_buffer buffer_;
@@ -133,13 +138,14 @@ class session : public std::enable_shared_from_this<session>
 //------------------------------------------------------------------------------
 
 // Accepts incoming connections and launches the sessions
-class listener : public std::enable_shared_from_this<listener>
-{
+class listener : public std::enable_shared_from_this<listener> {
   tcp::acceptor acceptor_;
   tcp::socket socket_;
+  std::weak_ptr<game_loop> wgl;
 
  public:
-  listener(boost::asio::io_context& ioc, tcp::endpoint endpoint) : acceptor_(ioc) , socket_(ioc) {
+  listener(boost::asio::io_context& ioc, std::weak_ptr<game_loop> wgl, tcp::endpoint endpoint)
+      : acceptor_(ioc) , socket_(ioc), wgl(wgl) {
     LOGGER_SERVER;
     boost::system::error_code ec;
 
@@ -206,37 +212,34 @@ class listener : public std::enable_shared_from_this<listener>
 
 //------------------------------------------------------------------------------
 
-struct printer {
-  printer(boost::asio::io_context& io)
-    : timer_(io, boost::asio::chrono::seconds(1)), count_(0) {
-    LOGGER_SERVER;
-    timer_.async_wait(boost::bind(&printer::print, this));
-  }
-
-  ~printer() {
-    LOGGER_SERVER;
-  }
-
-  void print() {
-    LOGGER_SERVER;
-    // boost::this_thread::sleep_for(boost::chrono::seconds(3));
-    if (count_ < 100) {
-      LOG_SERVER("count: %d", count_);
-      ++count_;
-
-      timer_.expires_at(timer_.expiry() + boost::asio::chrono::seconds(1));
-      timer_.async_wait(boost::bind(&printer::print, this));
-    }
-  }
-
+struct game_loop : std::enable_shared_from_this<game_loop> {
   boost::asio::steady_timer timer_;
-  int count_;
+  std::shared_ptr<listener> listener_;
+  std::vector<std::shared_ptr<session>> sessions;
+
+  game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint)
+      : timer_(ioc, boost::asio::chrono::seconds(1)) {
+    LOGGER_SERVER;
+    listener_ = std::make_shared<listener>(ioc, weak_from_this(), endpoint);
+    timer_.async_wait(boost::bind(&game_loop::update, this));
+  }
+
+  void update() {
+    LOGGER_SERVER;
+
+    timer_.expires_at(timer_.expiry() + boost::asio::chrono::milliseconds(1000));
+    timer_.async_wait(boost::bind(&game_loop::update, this));
+  }
+
+  void run() {
+    LOGGER_SERVER;
+    listener_->run();
+  }
 };
 
 //------------------------------------------------------------------------------
 
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]) {
   // Check command line arguments.
   if (argc != 3) {
     std::cerr <<
@@ -246,13 +249,10 @@ int main(int argc, char* argv[])
   auto const address = boost::asio::ip::make_address(argv[1]);
   auto const port = static_cast<unsigned short>(std::atoi(argv[2]));
 
-  // The io_context is required for all I/O
   boost::asio::io_context ioc;
 
-  // Create and launch a listening port
-  std::make_shared<listener>(ioc, tcp::endpoint{address, port})->run();
-
-  printer p(ioc);
+  game_loop gl(ioc, tcp::endpoint{address, port});
+  gl.run();
 
   ioc.run();
 
