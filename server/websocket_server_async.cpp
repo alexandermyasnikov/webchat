@@ -27,7 +27,7 @@
 #include <memory>
 #include <string>
 #include <thread>
-#include <vector>
+#include <list>
 
 #include "logger.h"
 
@@ -39,6 +39,17 @@ namespace websocket = boost::beast::websocket;  // from <boost/beast/websocket.h
 struct listener;
 struct session;
 struct game_loop;
+
+struct game_loop : std::enable_shared_from_this<game_loop> {
+  boost::asio::steady_timer           timer_;
+  std::shared_ptr<listener>           listener_;
+  std::list<std::shared_ptr<session>> sessions;
+  std::list<std::string>              msg_in;
+
+  game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint);
+  void update();
+  void run();
+};
 
 //------------------------------------------------------------------------------
 
@@ -53,10 +64,13 @@ class session : public std::enable_shared_from_this<session> {
   websocket::stream<tcp::socket> ws_;
   boost::asio::strand<boost::asio::io_context::executor_type> strand_;
   boost::beast::multi_buffer buffer_;
+  std::weak_ptr<game_loop>   wgl;
+  std::list<std::string>     msg_out;
 
  public:
   // Take ownership of the socket
-  explicit session(tcp::socket socket) : ws_(std::move(socket)), strand_(ws_.get_executor()) {
+  explicit session(std::weak_ptr<game_loop> wgl, tcp::socket socket)
+      : ws_(std::move(socket)), strand_(ws_.get_executor()), wgl(wgl) {
     LOGGER_SERVER;
   }
 
@@ -118,6 +132,12 @@ class session : public std::enable_shared_from_this<session> {
             shared_from_this(),
             std::placeholders::_1,
             std::placeholders::_2)));
+
+    auto sgl = wgl.lock();
+    if (sgl) {
+      std::string msg = boost::beast::buffers_to_string(buffer_.data());
+      sgl->msg_in.push_back(msg);
+    }
   }
 
   void on_write(boost::system::error_code ec, std::size_t bytes_transferred) {
@@ -181,7 +201,7 @@ class listener : public std::enable_shared_from_this<listener> {
   // Start accepting incoming connections
   void run() {
     LOGGER_SERVER;
-    if(! acceptor_.is_open())
+    if(!acceptor_.is_open())
       return;
     do_accept();
   }
@@ -201,8 +221,11 @@ class listener : public std::enable_shared_from_this<listener> {
     if(ec) {
       fail(ec, "accept");
     } else {
-      // Create the session and run it
-      std::make_shared<session>(std::move(socket_))->run();
+      auto sgl = wgl.lock();
+      if (sgl) {
+        sgl->sessions.emplace_back(std::make_shared<session>(wgl, std::move(socket_)));
+        sgl->sessions.back()->run();
+      }
     }
 
     // Accept another connection
@@ -212,30 +235,24 @@ class listener : public std::enable_shared_from_this<listener> {
 
 //------------------------------------------------------------------------------
 
-struct game_loop : std::enable_shared_from_this<game_loop> {
-  boost::asio::steady_timer timer_;
-  std::shared_ptr<listener> listener_;
-  std::vector<std::shared_ptr<session>> sessions;
+game_loop::game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint)
+    : timer_(ioc, boost::asio::chrono::seconds(1)) {
+  LOGGER_SERVER;
+  listener_ = std::make_shared<listener>(ioc, weak_from_this(), endpoint);
+  timer_.async_wait(boost::bind(&game_loop::update, this));
+}
 
-  game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint)
-      : timer_(ioc, boost::asio::chrono::seconds(1)) {
-    LOGGER_SERVER;
-    listener_ = std::make_shared<listener>(ioc, weak_from_this(), endpoint);
-    timer_.async_wait(boost::bind(&game_loop::update, this));
-  }
+void game_loop::update() {
+  LOGGER_SERVER;
 
-  void update() {
-    LOGGER_SERVER;
+  timer_.expires_at(timer_.expiry() + boost::asio::chrono::milliseconds(1000));
+  timer_.async_wait(boost::bind(&game_loop::update, this));
+}
 
-    timer_.expires_at(timer_.expiry() + boost::asio::chrono::milliseconds(1000));
-    timer_.async_wait(boost::bind(&game_loop::update, this));
-  }
-
-  void run() {
-    LOGGER_SERVER;
-    listener_->run();
-  }
-};
+void game_loop::run() {
+  LOGGER_SERVER;
+  listener_->run();
+}
 
 //------------------------------------------------------------------------------
 
