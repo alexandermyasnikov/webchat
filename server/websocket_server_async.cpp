@@ -41,12 +41,16 @@ struct session;
 struct game_loop;
 
 struct game_loop : std::enable_shared_from_this<game_loop> {
-  boost::asio::steady_timer           timer_;
-  std::shared_ptr<listener>           listener_;
-  std::list<std::shared_ptr<session>> sessions_;
-  std::list<std::string>              msg_in_;
+  boost::asio::steady_timer                  timer_;
+  std::shared_ptr<listener>                  listener_;
+  std::map<size_t, std::shared_ptr<session>> sessions_;
+  std::list<std::string>                     msg_in_;
 
   game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint);
+  ~game_loop();
+  void add_session(std::shared_ptr<session> s);
+  void delete_session(std::shared_ptr<session> s);
+  void add_message(std::shared_ptr<session> s, const std::string& msg);
   void update();
   void run();
 };
@@ -67,11 +71,16 @@ struct session : public std::enable_shared_from_this<session> {
   boost::beast::multi_buffer buffer_out_;
   std::weak_ptr<game_loop>   wgl_;
   std::list<std::string>     msg_out_;
+  size_t                     id_;
 
  public:
   // Take ownership of the socket
   explicit session(std::weak_ptr<game_loop> wgl, tcp::socket socket)
       : ws_(std::move(socket)), strand_(ws_.get_executor()), wgl_(wgl) {
+    LOGGER_SERVER;
+  }
+
+  ~session() {
     LOGGER_SERVER;
   }
 
@@ -115,17 +124,22 @@ struct session : public std::enable_shared_from_this<session> {
     LOGGER_SERVER;
     boost::ignore_unused(bytes_transferred);
 
+    auto sgl = wgl_.lock();
+
     // This indicates that the session was closed
-    if(ec == websocket::error::closed)
+    if(ec == websocket::error::closed) {
+      if (sgl) {
+        sgl->delete_session(shared_from_this());
+      }
       return;
+    }
 
     if(ec)
       fail(ec, "read");
 
-    auto sgl = wgl_.lock();
     if (sgl) {
       std::string msg = boost::beast::buffers_to_string(buffer_in_.data());
-      sgl->msg_in_.push_back(msg);
+      sgl->add_message(shared_from_this(), msg);
     }
 
     buffer_in_.consume(buffer_in_.size());
@@ -212,6 +226,10 @@ struct listener : public std::enable_shared_from_this<listener> {
     }
   }
 
+  ~listener() {
+    LOGGER_SERVER;
+  }
+
   // Start accepting incoming connections
   void run() {
     LOGGER_SERVER;
@@ -236,10 +254,12 @@ struct listener : public std::enable_shared_from_this<listener> {
       fail(ec, "accept");
     } else {
       auto sgl = wgl_.lock();
-      bool b = static_cast<bool>(sgl);
-      if (b) {
-        sgl->sessions_.emplace_back(std::make_shared<session>(wgl_, std::move(socket_)));
-        sgl->sessions_.back()->run();
+      if (sgl) {
+        auto s = std::make_shared<session>(wgl_, std::move(socket_));
+        s->run();
+        sgl->add_session(s);
+      } else {
+        socket_.close();
       }
     }
 
@@ -257,12 +277,36 @@ game_loop::game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint)
   timer_.async_wait(boost::bind(&game_loop::update, this));
 }
 
+game_loop::~game_loop() {
+  LOGGER_SERVER;
+}
+
+void game_loop::add_session(std::shared_ptr<session> s) {
+  LOGGER_SERVER;
+
+  static size_t id = 0;
+  id++;
+
+  s->id_ = id;
+  sessions_[id] = s;
+  msg_in_.push_back("#" + std::to_string(id) + " has joined the room");
+}
+
+void game_loop::delete_session(std::shared_ptr<session> s) {
+  sessions_.erase(s->id_);
+  msg_in_.push_back("#" + std::to_string(s->id_) + " has left the room");
+}
+
+void game_loop::add_message(std::shared_ptr<session> s, const std::string& msg) {
+  msg_in_.push_back("#" + std::to_string(s->id_) + ": " + msg);
+}
+
 void game_loop::update() {
   LOGGER_SERVER;
 
   if (!msg_in_.empty()) {
     const auto& msg = msg_in_.front();
-    for (auto session : sessions_) {
+    for (auto [_, session] : sessions_) {
       session->msg_out_.push_back(msg);
       session->do_write();
     }
@@ -282,7 +326,6 @@ void game_loop::run() {
 //------------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
-  // Check command line arguments.
   if (argc != 3) {
     std::cerr <<
       "Usage: websocket-server-async <address> <port> \n";
