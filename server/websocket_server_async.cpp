@@ -394,7 +394,6 @@ void game_loop_t::on_update() {
   LOGGER_SERVER;
 
   if (!_msg_in.empty()) {
-
     size_t id = _msg_in.front().first;
     std::string msg = std::move(_msg_in.front().second);
 
@@ -404,7 +403,24 @@ void game_loop_t::on_update() {
     action->process(shared_from_this());
   }
 
-  _timer.expires_at(_timer.expiry() + boost::asio::chrono::milliseconds(1000));
+  if (!_msg_out.empty()) {
+    size_t id = _msg_out.front().first;
+    std::string msg = std::move(_msg_out.front().second);
+
+    _msg_out.pop_front();
+
+    auto it = _sessions.find(id);
+    if (it != _sessions.end()) {
+      if (it->second && it->second.use_count() > 1) {
+        it->second->_msg_out.push_back(msg);
+        it->second->do_write();
+      } else {
+        _sessions.erase(it);
+      }
+    }
+  }
+
+  _timer.expires_at(_timer.expiry() + boost::asio::chrono::milliseconds(100));
   _timer.async_wait(boost::bind(&game_loop_t::on_update, this));
 }
 
@@ -433,8 +449,7 @@ bool action_text_t::process(std::shared_ptr<game_loop_t> sgl) {
       + _msg;
 
   for (auto [id, session] : sgl->_sessions) {
-    session->_msg_out.push_back(msg);
-    session->do_write();
+    sgl->_msg_out.push_back({id, msg});
   }
   return true;
 }
@@ -466,8 +481,7 @@ bool action_join_t::process(std::shared_ptr<game_loop_t> sgl) {
       + " has joined the room";
 
   for (auto [id, session] : sgl->_sessions) {
-    session->_msg_out.push_back(msg);
-    session->do_write();
+    sgl->_msg_out.push_back({id, msg});
   }
   return true;
 }
@@ -499,11 +513,8 @@ bool action_leave_t::process(std::shared_ptr<game_loop_t> sgl) {
       + " has left the room";
 
   for (auto [id, session] : sgl->_sessions) {
-    session->_msg_out.push_back(msg);
-    session->do_write();
+    sgl->_msg_out.push_back({id, msg});
   }
-
-  sgl->_sessions.erase(_id);
 
   return true;
 }
@@ -529,10 +540,7 @@ bool action_get_name_t::from_string(size_t id, const std::string& msg) {
 bool action_get_name_t::process(std::shared_ptr<game_loop_t> sgl) {
   LOGGER_SERVER;
   std::string msg = "<server> #" + std::to_string(_id) + " has name \"" + sgl->_sessions[_id]->_name + "\"";
-
-  sgl->_sessions[_id]->_msg_out.push_back(msg);
-  sgl->_sessions[_id]->do_write();
-
+  sgl->_msg_out.push_back({_id, msg});
   return true;
 }
 
@@ -568,13 +576,11 @@ bool action_set_name_t::process(std::shared_ptr<game_loop_t> sgl) {
     sgl->_sessions[_id]->_name = _name;
     msg = "<server> #" + std::to_string(_id) + " has new name \"" + _name + "\"";
     for (auto [id, session] : sgl->_sessions) {
-      session->_msg_out.push_back(msg);
-      session->do_write();
+      sgl->_msg_out.push_back({id, msg});
     }
   } else {
     msg = "<server> error: invalid name";
-    sgl->_sessions[_id]->_msg_out.push_back(msg);
-    sgl->_sessions[_id]->do_write();
+    sgl->_msg_out.push_back({_id, msg});
   }
 
   return true;
@@ -604,9 +610,7 @@ bool action_help_t::process(std::shared_ptr<game_loop_t> sgl) {
       "<server> /help                    # Display this help message\n"
       "<server> /get_name                # Get current name \n"
       "<server> /set_name <name>         # Set new name";
-  sgl->_sessions[_id]->_msg_out.push_back(msg);
-  sgl->_sessions[_id]->do_write();
-
+  sgl->_msg_out.push_back({_id, msg});
   return true;
 }
 
