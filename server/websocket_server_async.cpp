@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -58,6 +59,26 @@ struct action_join_t : action_t {
 
 struct action_leave_t : action_t {
   size_t _id;
+
+  bool from_string(size_t id, const std::string& msg) override;
+  bool process(std::shared_ptr<game_loop> sgl) override;
+  std::string name() override;
+  std::shared_ptr<action_t> prototype() override;
+};
+
+struct action_get_name : action_t {
+  size_t _id;
+  std::string _name;
+
+  bool from_string(size_t id, const std::string& msg) override;
+  bool process(std::shared_ptr<game_loop> sgl) override;
+  std::string name() override;
+  std::shared_ptr<action_t> prototype() override;
+};
+
+struct action_set_name : action_t {
+  size_t _id;
+  std::string _name;
 
   bool from_string(size_t id, const std::string& msg) override;
   bool process(std::shared_ptr<game_loop> sgl) override;
@@ -128,6 +149,7 @@ struct session : public std::enable_shared_from_this<session> {
   std::list<std::string>     msg_out_;
   size_t                     id_;
   bool                       write_msg_;
+  std::string                name_;
 
  public:
   explicit session(std::weak_ptr<game_loop> wgl, tcp::socket socket)
@@ -371,6 +393,8 @@ void game_loop::on_update() {
     action_factory.registry(std::make_shared<action_text_t>());
     action_factory.registry(std::make_shared<action_join_t>());
     action_factory.registry(std::make_shared<action_leave_t>());
+    action_factory.registry(std::make_shared<action_get_name>());
+    action_factory.registry(std::make_shared<action_set_name>());
 
     auto action = action_factory.from_string(id, msg);
     action->process(shared_from_this());
@@ -395,7 +419,13 @@ bool action_text_t::from_string(size_t id, const std::string& msg) {
 }
 
 bool action_text_t::process(std::shared_ptr<game_loop> sgl) {
-  std::string msg = "<#" + std::to_string(_id) + "> " + _msg;
+  const std::string& name = sgl->sessions_[_id]->name_;
+  std::string msg = "<#"
+      + std::to_string(_id)
+      + (!name.empty() ? '(' + name + ')': "")
+      + "> "
+      + _msg;
+
   for (auto [id, session] : sgl->sessions_) {
     session->msg_out_.push_back(msg);
     session->do_write();
@@ -419,7 +449,12 @@ bool action_join_t::from_string(size_t id, const std::string& msg) {
 }
 
 bool action_join_t::process(std::shared_ptr<game_loop> sgl) {
-  std::string msg = "<server> #" + std::to_string(_id) + " has joined the room";
+  const std::string& name = sgl->sessions_[_id]->name_;
+  std::string msg = "<server> #"
+      + std::to_string(_id)
+      + (!name.empty() ? '(' + name + ')': "")
+      + " has joined the room";
+
   for (auto [id, session] : sgl->sessions_) {
     session->msg_out_.push_back(msg);
     session->do_write();
@@ -443,7 +478,12 @@ bool action_leave_t::from_string(size_t id, const std::string& msg) {
 }
 
 bool action_leave_t::process(std::shared_ptr<game_loop> sgl) {
-  std::string msg = "<server> #" + std::to_string(_id) + " has left the room";
+  const std::string& name = sgl->sessions_[_id]->name_;
+  std::string msg = "<server> #"
+      + std::to_string(_id)
+      + (!name.empty() ? '(' + name + ')': "")
+      + " has left the room";
+
   for (auto [id, session] : sgl->sessions_) {
     session->msg_out_.push_back(msg);
     session->do_write();
@@ -457,6 +497,71 @@ std::string action_leave_t::name() {
 
 std::shared_ptr<action_t> action_leave_t::prototype() {
   return std::make_shared<action_leave_t>();
+}
+
+//------------------------------------------------------------------------------
+
+bool action_get_name::from_string(size_t id, const std::string& msg) {
+  _id = id;
+  return true;
+}
+
+bool action_get_name::process(std::shared_ptr<game_loop> sgl) {
+  std::string msg = "<server> #" + std::to_string(_id) + " has name \"" + sgl->sessions_[_id]->name_ + "\"";
+
+  sgl->sessions_[_id]->msg_out_.push_back(msg);
+  sgl->sessions_[_id]->do_write();
+
+  return true;
+}
+
+std::string action_get_name::name() {
+  return "/get_name";
+}
+
+std::shared_ptr<action_t> action_get_name::prototype() {
+  return std::make_shared<action_get_name>();
+}
+
+//------------------------------------------------------------------------------
+
+bool action_set_name::from_string(size_t id, const std::string& msg) {
+  _id = id;
+  std::stringstream ss(msg);
+  std::string cmd;
+  ss >> cmd >> _name;
+  return cmd == name() && !_name.empty();
+}
+
+bool action_set_name::process(std::shared_ptr<game_loop> sgl) {
+  bool is_valid_name = std::all_of(_name.begin(), _name.end(), [](char c) {
+    return isdigit(c) || isalpha(c) || c == '_';
+  });
+
+  std::string msg;
+
+  if (_name.size() <= 32 && is_valid_name) {
+    sgl->sessions_[_id]->name_ = _name;
+    msg = "<server> #" + std::to_string(_id) + " has new name \"" + _name + "\"";
+    for (auto [id, session] : sgl->sessions_) {
+      session->msg_out_.push_back(msg);
+      session->do_write();
+    }
+  } else {
+    msg = "<server> error: invalid name";
+    sgl->sessions_[_id]->msg_out_.push_back(msg);
+    sgl->sessions_[_id]->do_write();
+  }
+
+  return true;
+}
+
+std::string action_set_name::name() {
+  return "/set_name";
+}
+
+std::shared_ptr<action_t> action_set_name::prototype() {
+  return std::make_shared<action_set_name>();
 }
 
 //------------------------------------------------------------------------------
