@@ -22,15 +22,15 @@ namespace websocket = boost::beast::websocket;  // from <boost/beast/websocket.h
 
 //------------------------------------------------------------------------------
 
-struct listener;
-struct session;
-struct game_loop;
+struct listener_t;
+struct session_t;
+struct game_loop_t;
 
 //------------------------------------------------------------------------------
 
 struct command_t {
   virtual bool from_string(size_t id, const std::string& msg) = 0;
-  virtual bool process(std::shared_ptr<game_loop> sgl) = 0;
+  virtual bool process(std::shared_ptr<game_loop_t> sgl) = 0;
   virtual std::string name() = 0;
   virtual std::shared_ptr<command_t> prototype() = 0;
 };
@@ -43,7 +43,7 @@ struct action_text_t : action_t {
   std::string _msg;
 
   bool from_string(size_t id, const std::string& msg) override;
-  bool process(std::shared_ptr<game_loop> sgl) override;
+  bool process(std::shared_ptr<game_loop_t> sgl) override;
   std::string name() override;
   std::shared_ptr<action_t> prototype() override;
 };
@@ -52,7 +52,7 @@ struct action_join_t : action_t {
   size_t _id;
 
   bool from_string(size_t id, const std::string& msg) override;
-  bool process(std::shared_ptr<game_loop> sgl) override;
+  bool process(std::shared_ptr<game_loop_t> sgl) override;
   std::string name() override;
   std::shared_ptr<action_t> prototype() override;
 };
@@ -61,36 +61,36 @@ struct action_leave_t : action_t {
   size_t _id;
 
   bool from_string(size_t id, const std::string& msg) override;
-  bool process(std::shared_ptr<game_loop> sgl) override;
+  bool process(std::shared_ptr<game_loop_t> sgl) override;
   std::string name() override;
   std::shared_ptr<action_t> prototype() override;
 };
 
-struct action_get_name : action_t {
+struct action_get_name_t : action_t {
   size_t _id;
   std::string _name;
 
   bool from_string(size_t id, const std::string& msg) override;
-  bool process(std::shared_ptr<game_loop> sgl) override;
+  bool process(std::shared_ptr<game_loop_t> sgl) override;
   std::string name() override;
   std::shared_ptr<action_t> prototype() override;
 };
 
-struct action_set_name : action_t {
+struct action_set_name_t : action_t {
   size_t _id;
   std::string _name;
 
   bool from_string(size_t id, const std::string& msg) override;
-  bool process(std::shared_ptr<game_loop> sgl) override;
+  bool process(std::shared_ptr<game_loop_t> sgl) override;
   std::string name() override;
   std::shared_ptr<action_t> prototype() override;
 };
 
-struct action_help : action_t {
+struct action_help_t : action_t {
   size_t _id;
 
   bool from_string(size_t id, const std::string& msg) override;
-  bool process(std::shared_ptr<game_loop> sgl) override;
+  bool process(std::shared_ptr<game_loop_t> sgl) override;
   std::string name() override;
   std::shared_ptr<action_t> prototype() override;
 };
@@ -124,19 +124,18 @@ std::shared_ptr<action_t> action_factory_t::from_string(size_t id, const std::st
 
 //------------------------------------------------------------------------------
 
-struct game_loop : std::enable_shared_from_this<game_loop> {
-  boost::asio::steady_timer                  timer_;
-  std::shared_ptr<listener>                  listener_;
-  std::map<size_t, std::shared_ptr<session>> sessions_;
-  std::list<std::pair<size_t, std::string>>  msg_in_;
-  std::list<std::pair<size_t, std::string>>  msg_out_;
+struct game_loop_t : std::enable_shared_from_this<game_loop_t> {
+  boost::asio::steady_timer                    _timer;
+  std::shared_ptr<listener_t>                  _listener;
+  std::map<size_t, std::shared_ptr<session_t>> _sessions;
+  std::list<std::pair<size_t, std::string>>    _msg_in;
+  std::list<std::pair<size_t, std::string>>    _msg_out;
 
-  game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint);
-  ~game_loop();
-  void add_session(std::shared_ptr<session> s);
-  void delete_session(std::shared_ptr<session> s);
-  void add_message(std::shared_ptr<session> s, const std::string& msg);
-  void send_message(const std::string& msg); // old
+  game_loop_t(boost::asio::io_context& ioc, tcp::endpoint endpoint);
+  ~game_loop_t();
+  void add_session(std::shared_ptr<session_t> s);
+  void delete_session(std::shared_ptr<session_t> s);
+  void add_message(std::shared_ptr<session_t> s, const std::string& msg);
   void on_update();
   void run();
 };
@@ -148,34 +147,34 @@ void fail(boost::system::error_code ec, char const* what) {
   std::cerr << what << ": " << ec.message() << "\n";
 }
 
-struct session : public std::enable_shared_from_this<session> {
-  websocket::stream<tcp::socket> ws_;
-  boost::asio::strand<boost::asio::io_context::executor_type> strand_;
-  boost::beast::multi_buffer buffer_in_;
-  boost::beast::multi_buffer buffer_out_;
-  std::weak_ptr<game_loop>   wgl_;
-  std::list<std::string>     msg_out_;
-  size_t                     id_;
-  bool                       write_msg_;
-  std::string                name_;
+struct session_t : public std::enable_shared_from_this<session_t> {
+  websocket::stream<tcp::socket> _ws;
+  boost::asio::strand<boost::asio::io_context::executor_type> _strand;
+  boost::beast::multi_buffer _buffer_in;
+  boost::beast::multi_buffer _buffer_out;
+  std::weak_ptr<game_loop_t>   _wgl;
+  std::list<std::string>     _msg_out;
+  size_t                     _id;
+  bool                       _write_msg;
+  std::string                _name;
 
  public:
-  explicit session(std::weak_ptr<game_loop> wgl, tcp::socket socket)
-      : ws_(std::move(socket)), strand_(ws_.get_executor()), wgl_(wgl), write_msg_(false) {
+  explicit session_t(std::weak_ptr<game_loop_t> wgl, tcp::socket socket)
+      : _ws(std::move(socket)), _strand(_ws.get_executor()), _wgl(wgl), _write_msg(false) {
     LOGGER_SERVER;
   }
 
-  ~session() {
+  ~session_t() {
     LOGGER_SERVER;
   }
 
   void run() {
     LOGGER_SERVER;
-    ws_.async_accept(
+    _ws.async_accept(
         boost::asio::bind_executor(
-          strand_,
+          _strand,
           std::bind(
-            &session::on_accept,
+            &session_t::on_accept,
             shared_from_this(),
             std::placeholders::_1)));
   }
@@ -190,12 +189,12 @@ struct session : public std::enable_shared_from_this<session> {
 
   void do_read() {
     LOGGER_SERVER;
-    ws_.async_read(
-        buffer_in_,
+    _ws.async_read(
+        _buffer_in,
         boost::asio::bind_executor(
-          strand_,
+          _strand,
           std::bind(
-            &session::on_read,
+            &session_t::on_read,
             shared_from_this(),
             std::placeholders::_1,
             std::placeholders::_2)));
@@ -205,7 +204,7 @@ struct session : public std::enable_shared_from_this<session> {
     LOGGER_SERVER;
     boost::ignore_unused(bytes_transferred);
 
-    auto sgl = wgl_.lock();
+    auto sgl = _wgl.lock();
 
     if(ec == websocket::error::closed) {
       if (sgl) {
@@ -218,50 +217,48 @@ struct session : public std::enable_shared_from_this<session> {
       fail(ec, "read");
 
     if (sgl) {
-      std::string msg = boost::beast::buffers_to_string(buffer_in_.data());
+      std::string msg = boost::beast::buffers_to_string(_buffer_in.data());
       sgl->add_message(shared_from_this(), msg);
     }
 
-    buffer_in_.consume(buffer_in_.size());
+    _buffer_in.consume(_buffer_in.size());
 
     do_read();
   }
 
   void do_write() {
     LOGGER_SERVER;
-    if (!msg_out_.empty() && !write_msg_) {
-      write_msg_ = true;
-      const auto& msg = msg_out_.front();
+    if (!_msg_out.empty() && !_write_msg) {
+      _write_msg = true;
+      const auto& msg = _msg_out.front();
 
-      buffer_out_.consume(buffer_out_.size());
-      boost::beast::ostream(buffer_out_) << msg;
+      _buffer_out.consume(_buffer_out.size());
+      boost::beast::ostream(_buffer_out) << msg;
 
-      LOG_SERVER("buffer_out_.size(): %zd", buffer_out_.size());
-
-      ws_.text(ws_.got_text());
-      ws_.async_write(
-          buffer_out_.data(),
+      _ws.text(_ws.got_text());
+      _ws.async_write(
+          _buffer_out.data(),
           boost::asio::bind_executor(
-            strand_,
+            _strand,
             std::bind(
-              &session::on_write,
+              &session_t::on_write,
               shared_from_this(),
               std::placeholders::_1,
               std::placeholders::_2)));
 
-      msg_out_.pop_front();
+      _msg_out.pop_front();
     }
   }
 
   void on_write(boost::system::error_code ec, std::size_t bytes_transferred) {
     LOGGER_SERVER;
     boost::ignore_unused(bytes_transferred);
-    write_msg_ = false;
+    _write_msg = false;
 
     if(ec)
       return fail(ec, "write");
 
-    if (!msg_out_.empty()) {
+    if (!_msg_out.empty()) {
       do_write();
     }
   }
@@ -269,59 +266,59 @@ struct session : public std::enable_shared_from_this<session> {
 
 //------------------------------------------------------------------------------
 
-struct listener : public std::enable_shared_from_this<listener> {
-  tcp::acceptor acceptor_;
-  tcp::socket socket_;
-  std::weak_ptr<game_loop> wgl_;
+struct listener_t : public std::enable_shared_from_this<listener_t> {
+  tcp::acceptor              _acceptor;
+  tcp::socket                _socket;
+  std::weak_ptr<game_loop_t> _wgl;
 
  public:
-  listener(boost::asio::io_context& ioc, std::weak_ptr<game_loop> wgl, tcp::endpoint endpoint)
-      : acceptor_(ioc) , socket_(ioc), wgl_(wgl) {
+  listener_t(boost::asio::io_context& ioc, std::weak_ptr<game_loop_t> wgl, tcp::endpoint endpoint)
+      : _acceptor(ioc) , _socket(ioc), _wgl(wgl) {
     LOGGER_SERVER;
     boost::system::error_code ec;
 
-    acceptor_.open(endpoint.protocol(), ec);
+    _acceptor.open(endpoint.protocol(), ec);
     if(ec) {
       fail(ec, "open");
       return;
     }
 
-    acceptor_.set_option(boost::asio::socket_base::reuse_address(true));
+    _acceptor.set_option(boost::asio::socket_base::reuse_address(true));
     if(ec) {
       fail(ec, "set_option");
       return;
     }
 
-    acceptor_.bind(endpoint, ec);
+    _acceptor.bind(endpoint, ec);
     if(ec) {
       fail(ec, "bind");
       return;
     }
 
-    acceptor_.listen(boost::asio::socket_base::max_listen_connections, ec);
+    _acceptor.listen(boost::asio::socket_base::max_listen_connections, ec);
     if(ec) {
       fail(ec, "listen");
       return;
     }
   }
 
-  ~listener() {
+  ~listener_t() {
     LOGGER_SERVER;
   }
 
   void run() {
     LOGGER_SERVER;
-    if(!acceptor_.is_open())
+    if(!_acceptor.is_open())
       return;
     do_accept();
   }
 
   void do_accept() {
     LOGGER_SERVER;
-    acceptor_.async_accept(
-        socket_,
+    _acceptor.async_accept(
+        _socket,
         std::bind(
-          &listener::on_accept,
+          &listener_t::on_accept,
           shared_from_this(),
           std::placeholders::_1));
   }
@@ -331,13 +328,13 @@ struct listener : public std::enable_shared_from_this<listener> {
     if(ec) {
       fail(ec, "accept");
     } else {
-      auto sgl = wgl_.lock();
+      auto sgl = _wgl.lock();
       if (sgl) {
-        auto s = std::make_shared<session>(wgl_, std::move(socket_));
+        auto s = std::make_shared<session_t>(_wgl, std::move(_socket));
         s->run();
         sgl->add_session(s);
       } else {
-        socket_.close();
+        _socket.close();
       }
     }
 
@@ -347,76 +344,72 @@ struct listener : public std::enable_shared_from_this<listener> {
 
 //------------------------------------------------------------------------------
 
-game_loop::game_loop(boost::asio::io_context& ioc, tcp::endpoint endpoint)
-    : timer_(ioc, boost::asio::chrono::seconds(1)) {
+game_loop_t::game_loop_t(boost::asio::io_context& ioc, tcp::endpoint endpoint)
+    : _timer(ioc, boost::asio::chrono::seconds(1)) {
   LOGGER_SERVER;
-  listener_ = std::make_shared<listener>(ioc, weak_from_this(), endpoint);
-  timer_.async_wait(boost::bind(&game_loop::on_update, this));
+  _listener = std::make_shared<listener_t>(ioc, weak_from_this(), endpoint);
+  _timer.async_wait(boost::bind(&game_loop_t::on_update, this));
 }
 
-game_loop::~game_loop() {
+game_loop_t::~game_loop_t() {
   LOGGER_SERVER;
 }
 
-void game_loop::add_session(std::shared_ptr<session> s) {
+void game_loop_t::add_session(std::shared_ptr<session_t> s) {
   LOGGER_SERVER;
 
   static size_t id = 0;
-  s->id_ = ++id;
-  sessions_[s->id_] = s;
+  s->_id = ++id;
+  _sessions[s->_id] = s;
 
-  msg_in_.push_back({s->id_, "/join"});
+  _msg_in.push_back({s->_id, "/join"});
 }
 
-void game_loop::delete_session(std::shared_ptr<session> s) {
+void game_loop_t::delete_session(std::shared_ptr<session_t> s) {
   LOGGER_SERVER;
-  sessions_.erase(s->id_);
-  msg_in_.push_back({s->id_, "/leave"});
+  _sessions.erase(s->_id);
+  _msg_in.push_back({s->_id, "/leave"});
 }
 
-void game_loop::add_message(std::shared_ptr<session> s, const std::string& msg) {
+void game_loop_t::add_message(std::shared_ptr<session_t> s, const std::string& msg) {
   LOGGER_SERVER;
 
   if (msg.empty())
     return;
 
-  msg_in_.push_back({s->id_, msg});
+  _msg_in.push_back({s->_id, msg});
 }
 
-void game_loop::send_message(const std::string& msg) {
-  LOGGER_SERVER;
-}
-
-void game_loop::on_update() {
+void game_loop_t::on_update() {
   LOGGER_SERVER;
 
-  if (!msg_in_.empty()) {
+  if (!_msg_in.empty()) {
 
-    size_t id = msg_in_.front().first;
-    std::string msg = std::move(msg_in_.front().second);
+    size_t id = _msg_in.front().first;
+    std::string msg = std::move(_msg_in.front().second);
 
-    msg_in_.pop_front();
+    _msg_in.pop_front();
 
     action_factory_t action_factory; // TODO
     action_factory.registry(std::make_shared<action_text_t>());
     action_factory.registry(std::make_shared<action_join_t>());
     action_factory.registry(std::make_shared<action_leave_t>());
-    action_factory.registry(std::make_shared<action_get_name>());
-    action_factory.registry(std::make_shared<action_set_name>());
-    action_factory.registry(std::make_shared<action_help>());
+    action_factory.registry(std::make_shared<action_get_name_t>());
+    action_factory.registry(std::make_shared<action_set_name_t>());
+    action_factory.registry(std::make_shared<action_help_t>());
 
     auto action = action_factory.from_string(id, msg);
     action->process(shared_from_this());
   }
 
-  timer_.expires_at(timer_.expiry() + boost::asio::chrono::milliseconds(1000));
-  timer_.async_wait(boost::bind(&game_loop::on_update, this));
+  _timer.expires_at(_timer.expiry() + boost::asio::chrono::milliseconds(1000));
+  _timer.async_wait(boost::bind(&game_loop_t::on_update, this));
 }
 
-void game_loop::run() {
+void game_loop_t::run() {
   LOGGER_SERVER;
-  listener_->wgl_ = weak_from_this(); // XXX
-  listener_->run();
+  _listener->_wgl = weak_from_this(); // XXX
+  _listener->run();
 }
 
 //------------------------------------------------------------------------------
@@ -427,16 +420,16 @@ bool action_text_t::from_string(size_t id, const std::string& msg) {
   return true;
 }
 
-bool action_text_t::process(std::shared_ptr<game_loop> sgl) {
-  const std::string& name = sgl->sessions_[_id]->name_;
+bool action_text_t::process(std::shared_ptr<game_loop_t> sgl) {
+  const std::string& name = sgl->_sessions[_id]->_name;
   std::string msg = "<#"
       + std::to_string(_id)
       + (!name.empty() ? '(' + name + ')': "")
       + "> "
       + _msg;
 
-  for (auto [id, session] : sgl->sessions_) {
-    session->msg_out_.push_back(msg);
+  for (auto [id, session] : sgl->_sessions) {
+    session->_msg_out.push_back(msg);
     session->do_write();
   }
   return true;
@@ -457,15 +450,15 @@ bool action_join_t::from_string(size_t id, const std::string& msg) {
   return true;
 }
 
-bool action_join_t::process(std::shared_ptr<game_loop> sgl) {
-  const std::string& name = sgl->sessions_[_id]->name_;
+bool action_join_t::process(std::shared_ptr<game_loop_t> sgl) {
+  const std::string& name = sgl->_sessions[_id]->_name;
   std::string msg = "<server> #"
       + std::to_string(_id)
       + (!name.empty() ? '(' + name + ')': "")
       + " has joined the room";
 
-  for (auto [id, session] : sgl->sessions_) {
-    session->msg_out_.push_back(msg);
+  for (auto [id, session] : sgl->_sessions) {
+    session->_msg_out.push_back(msg);
     session->do_write();
   }
   return true;
@@ -486,15 +479,15 @@ bool action_leave_t::from_string(size_t id, const std::string& msg) {
   return true;
 }
 
-bool action_leave_t::process(std::shared_ptr<game_loop> sgl) {
-  const std::string& name = sgl->sessions_[_id]->name_;
+bool action_leave_t::process(std::shared_ptr<game_loop_t> sgl) {
+  const std::string& name = sgl->_sessions[_id]->_name;
   std::string msg = "<server> #"
       + std::to_string(_id)
       + (!name.empty() ? '(' + name + ')': "")
       + " has left the room";
 
-  for (auto [id, session] : sgl->sessions_) {
-    session->msg_out_.push_back(msg);
+  for (auto [id, session] : sgl->_sessions) {
+    session->_msg_out.push_back(msg);
     session->do_write();
   }
   return true;
@@ -510,31 +503,31 @@ std::shared_ptr<action_t> action_leave_t::prototype() {
 
 //------------------------------------------------------------------------------
 
-bool action_get_name::from_string(size_t id, const std::string& msg) {
+bool action_get_name_t::from_string(size_t id, const std::string& msg) {
   _id = id;
   return true;
 }
 
-bool action_get_name::process(std::shared_ptr<game_loop> sgl) {
-  std::string msg = "<server> #" + std::to_string(_id) + " has name \"" + sgl->sessions_[_id]->name_ + "\"";
+bool action_get_name_t::process(std::shared_ptr<game_loop_t> sgl) {
+  std::string msg = "<server> #" + std::to_string(_id) + " has name \"" + sgl->_sessions[_id]->_name + "\"";
 
-  sgl->sessions_[_id]->msg_out_.push_back(msg);
-  sgl->sessions_[_id]->do_write();
+  sgl->_sessions[_id]->_msg_out.push_back(msg);
+  sgl->_sessions[_id]->do_write();
 
   return true;
 }
 
-std::string action_get_name::name() {
+std::string action_get_name_t::name() {
   return "/get_name";
 }
 
-std::shared_ptr<action_t> action_get_name::prototype() {
-  return std::make_shared<action_get_name>();
+std::shared_ptr<action_t> action_get_name_t::prototype() {
+  return std::make_shared<action_get_name_t>();
 }
 
 //------------------------------------------------------------------------------
 
-bool action_set_name::from_string(size_t id, const std::string& msg) {
+bool action_set_name_t::from_string(size_t id, const std::string& msg) {
   _id = id;
   std::stringstream ss(msg);
   std::string cmd;
@@ -542,61 +535,61 @@ bool action_set_name::from_string(size_t id, const std::string& msg) {
   return cmd == name() && !_name.empty();
 }
 
-bool action_set_name::process(std::shared_ptr<game_loop> sgl) {
-  bool is_valid_name = std::all_of(_name.begin(), _name.end(), [](char c) {
+bool action_set_name_t::process(std::shared_ptr<game_loop_t> sgl) {
+  bool is_val_idname = std::all_of(_name.begin(), _name.end(), [](char c) {
     return isdigit(c) || isalpha(c) || c == '_';
   });
 
   std::string msg;
 
-  if (_name.size() <= 32 && is_valid_name) {
-    sgl->sessions_[_id]->name_ = _name;
+  if (_name.size() <= 32 && is_val_idname) {
+    sgl->_sessions[_id]->_name = _name;
     msg = "<server> #" + std::to_string(_id) + " has new name \"" + _name + "\"";
-    for (auto [id, session] : sgl->sessions_) {
-      session->msg_out_.push_back(msg);
+    for (auto [id, session] : sgl->_sessions) {
+      session->_msg_out.push_back(msg);
       session->do_write();
     }
   } else {
     msg = "<server> error: invalid name";
-    sgl->sessions_[_id]->msg_out_.push_back(msg);
-    sgl->sessions_[_id]->do_write();
+    sgl->_sessions[_id]->_msg_out.push_back(msg);
+    sgl->_sessions[_id]->do_write();
   }
 
   return true;
 }
 
-std::string action_set_name::name() {
+std::string action_set_name_t::name() {
   return "/set_name";
 }
 
-std::shared_ptr<action_t> action_set_name::prototype() {
-  return std::make_shared<action_set_name>();
+std::shared_ptr<action_t> action_set_name_t::prototype() {
+  return std::make_shared<action_set_name_t>();
 }
 
 //------------------------------------------------------------------------------
 
-bool action_help::from_string(size_t id, const std::string& msg) {
+bool action_help_t::from_string(size_t id, const std::string& msg) {
   _id = id;
   return true;
 }
 
-bool action_help::process(std::shared_ptr<game_loop> sgl) {
+bool action_help_t::process(std::shared_ptr<game_loop_t> sgl) {
   std::string msg = "<server> avaivalbe commands: \n"
       "<server> /help                    # Display this help message\n"
       "<server> /get_name                # Get current name \n"
       "<server> /set_name <name>         # Set new name";
-  sgl->sessions_[_id]->msg_out_.push_back(msg);
-  sgl->sessions_[_id]->do_write();
+  sgl->_sessions[_id]->_msg_out.push_back(msg);
+  sgl->_sessions[_id]->do_write();
 
   return true;
 }
 
-std::string action_help::name() {
+std::string action_help_t::name() {
   return "/help";
 }
 
-std::shared_ptr<action_t> action_help::prototype() {
-  return std::make_shared<action_help>();
+std::shared_ptr<action_t> action_help_t::prototype() {
+  return std::make_shared<action_help_t>();
 }
 
 //------------------------------------------------------------------------------
@@ -612,7 +605,7 @@ int main(int argc, char* argv[]) {
 
   boost::asio::io_context ioc;
 
-  auto gl = std::make_shared<game_loop>(ioc, tcp::endpoint{address, port});
+  auto gl = std::make_shared<game_loop_t>(ioc, tcp::endpoint{address, port});
   gl->run();
 
   ioc.run();
