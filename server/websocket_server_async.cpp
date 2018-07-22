@@ -86,6 +86,14 @@ struct action_set_name : action_t {
   std::shared_ptr<action_t> prototype() override;
 };
 
+struct action_help : action_t {
+  size_t _id;
+
+  bool from_string(size_t id, const std::string& msg) override;
+  bool process(std::shared_ptr<game_loop> sgl) override;
+  std::string name() override;
+  std::shared_ptr<action_t> prototype() override;
+};
 
 struct action_factory_t {
   std::map<std::string, std::shared_ptr<action_t>> actions;
@@ -395,6 +403,7 @@ void game_loop::on_update() {
     action_factory.registry(std::make_shared<action_leave_t>());
     action_factory.registry(std::make_shared<action_get_name>());
     action_factory.registry(std::make_shared<action_set_name>());
+    action_factory.registry(std::make_shared<action_help>());
 
     auto action = action_factory.from_string(id, msg);
     action->process(shared_from_this());
@@ -562,6 +571,32 @@ std::string action_set_name::name() {
 
 std::shared_ptr<action_t> action_set_name::prototype() {
   return std::make_shared<action_set_name>();
+}
+
+//------------------------------------------------------------------------------
+
+bool action_help::from_string(size_t id, const std::string& msg) {
+  _id = id;
+  return true;
+}
+
+bool action_help::process(std::shared_ptr<game_loop> sgl) {
+  std::string msg = "<server> avaivalbe commands: \n"
+      "<server> /help                    # Display this help message\n"
+      "<server> /get_name                # Get current name \n"
+      "<server> /set_name <name>         # Set new name";
+  sgl->sessions_[_id]->msg_out_.push_back(msg);
+  sgl->sessions_[_id]->do_write();
+
+  return true;
+}
+
+std::string action_help::name() {
+  return "/help";
+}
+
+std::shared_ptr<action_t> action_help::prototype() {
+  return std::make_shared<action_help>();
 }
 
 //------------------------------------------------------------------------------
