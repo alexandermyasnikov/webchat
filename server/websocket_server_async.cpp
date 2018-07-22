@@ -96,26 +96,28 @@ struct action_help_t : action_t {
 };
 
 struct action_factory_t {
-  std::map<std::string, std::shared_ptr<action_t>> actions;
+  std::map<std::string, std::shared_ptr<action_t>> _actions;
 
   bool registry(std::shared_ptr<action_t> action);
   std::shared_ptr<action_t> from_string(size_t id, const std::string& msg);
 };
 
 bool action_factory_t::registry(std::shared_ptr<action_t> action) {
-  actions[action->name()] = action;
+  LOGGER_SERVER;
+  _actions[action->name()] = action;
   return true;
 }
 
 std::shared_ptr<action_t> action_factory_t::from_string(size_t id, const std::string& msg) {
+  LOGGER_SERVER;
   std::shared_ptr<action_t> action_ret;
 
   std::string name = msg.substr(0, msg.find(' '));
-  auto it = actions.find(name);
-  if (it != actions.end()) {
+  auto it = _actions.find(name);
+  if (it != _actions.end()) {
     action_ret = it->second->prototype();
   } else {
-    action_ret = actions[""]; // TODO default action.
+    action_ret = _actions[""]; // TODO default action.
   }
 
   action_ret->from_string(id, msg);
@@ -414,12 +416,14 @@ void game_loop_t::run() {
 //------------------------------------------------------------------------------
 
 bool action_text_t::from_string(size_t id, const std::string& msg) {
+  LOGGER_SERVER;
   _id = id;
   _msg = msg;
   return true;
 }
 
 bool action_text_t::process(std::shared_ptr<game_loop_t> sgl) {
+  LOGGER_SERVER;
   const std::string& name = sgl->_sessions[_id]->_name;
   std::string msg = "<#"
       + std::to_string(_id)
@@ -435,21 +439,25 @@ bool action_text_t::process(std::shared_ptr<game_loop_t> sgl) {
 }
 
 std::string action_text_t::name() {
+  LOGGER_SERVER;
   return "";
 }
 
 //------------------------------------------------------------------------------
 
 std::shared_ptr<action_t> action_text_t::prototype() {
+  LOGGER_SERVER;
   return std::make_shared<action_text_t>();
 }
 
 bool action_join_t::from_string(size_t id, const std::string& msg) {
+  LOGGER_SERVER;
   _id = id;
   return true;
 }
 
 bool action_join_t::process(std::shared_ptr<game_loop_t> sgl) {
+  LOGGER_SERVER;
   const std::string& name = sgl->_sessions[_id]->_name;
   std::string msg = "<server> #"
       + std::to_string(_id)
@@ -464,21 +472,25 @@ bool action_join_t::process(std::shared_ptr<game_loop_t> sgl) {
 }
 
 std::string action_join_t::name() {
+  LOGGER_SERVER;
   return "/join";
 }
 
 std::shared_ptr<action_t> action_join_t::prototype() {
+  LOGGER_SERVER;
   return std::make_shared<action_join_t>();
 }
 
 //------------------------------------------------------------------------------
 
 bool action_leave_t::from_string(size_t id, const std::string& msg) {
+  LOGGER_SERVER;
   _id = id;
   return true;
 }
 
 bool action_leave_t::process(std::shared_ptr<game_loop_t> sgl) {
+  LOGGER_SERVER;
   const std::string& name = sgl->_sessions[_id]->_name;
   std::string msg = "<server> #"
       + std::to_string(_id)
@@ -496,21 +508,25 @@ bool action_leave_t::process(std::shared_ptr<game_loop_t> sgl) {
 }
 
 std::string action_leave_t::name() {
+  LOGGER_SERVER;
   return "/leave";
 }
 
 std::shared_ptr<action_t> action_leave_t::prototype() {
+  LOGGER_SERVER;
   return std::make_shared<action_leave_t>();
 }
 
 //------------------------------------------------------------------------------
 
 bool action_get_name_t::from_string(size_t id, const std::string& msg) {
+  LOGGER_SERVER;
   _id = id;
   return true;
 }
 
 bool action_get_name_t::process(std::shared_ptr<game_loop_t> sgl) {
+  LOGGER_SERVER;
   std::string msg = "<server> #" + std::to_string(_id) + " has name \"" + sgl->_sessions[_id]->_name + "\"";
 
   sgl->_sessions[_id]->_msg_out.push_back(msg);
@@ -520,6 +536,7 @@ bool action_get_name_t::process(std::shared_ptr<game_loop_t> sgl) {
 }
 
 std::string action_get_name_t::name() {
+  LOGGER_SERVER;
   return "/get_name";
 }
 
@@ -530,6 +547,7 @@ std::shared_ptr<action_t> action_get_name_t::prototype() {
 //------------------------------------------------------------------------------
 
 bool action_set_name_t::from_string(size_t id, const std::string& msg) {
+  LOGGER_SERVER;
   _id = id;
   std::stringstream ss(msg);
   std::string cmd;
@@ -538,6 +556,7 @@ bool action_set_name_t::from_string(size_t id, const std::string& msg) {
 }
 
 bool action_set_name_t::process(std::shared_ptr<game_loop_t> sgl) {
+  LOGGER_SERVER;
   bool is_val_idname = std::all_of(_name.begin(), _name.end(), [](char c) {
     return isdigit(c) || isalpha(c) || c == '_';
   });
@@ -561,21 +580,25 @@ bool action_set_name_t::process(std::shared_ptr<game_loop_t> sgl) {
 }
 
 std::string action_set_name_t::name() {
+  LOGGER_SERVER;
   return "/set_name";
 }
 
 std::shared_ptr<action_t> action_set_name_t::prototype() {
+  LOGGER_SERVER;
   return std::make_shared<action_set_name_t>();
 }
 
 //------------------------------------------------------------------------------
 
 bool action_help_t::from_string(size_t id, const std::string& msg) {
+  LOGGER_SERVER;
   _id = id;
   return true;
 }
 
 bool action_help_t::process(std::shared_ptr<game_loop_t> sgl) {
+  LOGGER_SERVER;
   std::string msg = "<server> avaivalbe commands: \n"
       "<server> /help                    # Display this help message\n"
       "<server> /get_name                # Get current name \n"
@@ -587,10 +610,12 @@ bool action_help_t::process(std::shared_ptr<game_loop_t> sgl) {
 }
 
 std::string action_help_t::name() {
+  LOGGER_SERVER;
   return "/help";
 }
 
 std::shared_ptr<action_t> action_help_t::prototype() {
+  LOGGER_SERVER;
   return std::make_shared<action_help_t>();
 }
 
