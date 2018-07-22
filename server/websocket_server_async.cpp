@@ -132,6 +132,7 @@ struct game_loop_t : std::enable_shared_from_this<game_loop_t> {
   std::map<size_t, std::shared_ptr<session_t>> _sessions;
   std::list<std::pair<size_t, std::string>>    _msg_in;
   std::list<std::pair<size_t, std::string>>    _msg_out;
+  action_factory_t                             _action_factory;
 
   game_loop_t(boost::asio::io_context& ioc, tcp::endpoint endpoint);
   ~game_loop_t();
@@ -154,7 +155,7 @@ struct session_t : public std::enable_shared_from_this<session_t> {
   boost::asio::strand<boost::asio::io_context::executor_type> _strand;
   boost::beast::multi_buffer _buffer_in;
   boost::beast::multi_buffer _buffer_out;
-  std::weak_ptr<game_loop_t>   _wgl;
+  std::weak_ptr<game_loop_t> _wgl;
   std::list<std::string>     _msg_out;
   size_t                     _id;
   bool                       _write_msg;
@@ -351,6 +352,14 @@ game_loop_t::game_loop_t(boost::asio::io_context& ioc, tcp::endpoint endpoint)
   LOGGER_SERVER;
   _listener = std::make_shared<listener_t>(ioc, weak_from_this(), endpoint);
   _timer.async_wait(boost::bind(&game_loop_t::on_update, this));
+
+  _action_factory.registry(std::make_shared<action_text_t>());
+  _action_factory.registry(std::make_shared<action_join_t>());
+  _action_factory.registry(std::make_shared<action_leave_t>());
+  _action_factory.registry(std::make_shared<action_get_name_t>());
+  _action_factory.registry(std::make_shared<action_set_name_t>());
+  _action_factory.registry(std::make_shared<action_help_t>());
+
 }
 
 game_loop_t::~game_loop_t() {
@@ -391,15 +400,7 @@ void game_loop_t::on_update() {
 
     _msg_in.pop_front();
 
-    action_factory_t action_factory; // TODO
-    action_factory.registry(std::make_shared<action_text_t>());
-    action_factory.registry(std::make_shared<action_join_t>());
-    action_factory.registry(std::make_shared<action_leave_t>());
-    action_factory.registry(std::make_shared<action_get_name_t>());
-    action_factory.registry(std::make_shared<action_set_name_t>());
-    action_factory.registry(std::make_shared<action_help_t>());
-
-    auto action = action_factory.from_string(id, msg);
+    auto action = _action_factory.from_string(id, msg);
     action->process(shared_from_this());
   }
 
