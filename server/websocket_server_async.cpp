@@ -367,7 +367,6 @@ void game_loop_t::add_session(std::shared_ptr<session_t> s) {
 
 void game_loop_t::delete_session(std::shared_ptr<session_t> s) {
   LOGGER_SERVER;
-  _sessions.erase(s->_id);
   _msg_in.push_back({s->_id, "/leave"});
 }
 
@@ -490,6 +489,9 @@ bool action_leave_t::process(std::shared_ptr<game_loop_t> sgl) {
     session->_msg_out.push_back(msg);
     session->do_write();
   }
+
+  sgl->_sessions.erase(_id);
+
   return true;
 }
 
