@@ -184,7 +184,7 @@ struct session_t : public std::enable_shared_from_this<session_t> {
 
   void on_accept(boost::system::error_code ec) {
     LOGGER_SERVER;
-    if(ec)
+    if (ec)
       return fail(ec, "accept");
 
     do_read();
@@ -255,7 +255,7 @@ struct session_t : public std::enable_shared_from_this<session_t> {
     boost::ignore_unused(bytes_transferred);
     _write_msg = false;
 
-    if(ec)
+    if (ec)
       return fail(ec, "write");
 
     if (!_msg_out.empty()) {
@@ -278,25 +278,25 @@ struct listener_t : public std::enable_shared_from_this<listener_t> {
     boost::system::error_code ec;
 
     _acceptor.open(endpoint.protocol(), ec);
-    if(ec) {
+    if (ec) {
       fail(ec, "open");
       return;
     }
 
     _acceptor.set_option(boost::asio::socket_base::reuse_address(true));
-    if(ec) {
+    if (ec) {
       fail(ec, "set_option");
       return;
     }
 
     _acceptor.bind(endpoint, ec);
-    if(ec) {
+    if (ec) {
       fail(ec, "bind");
       return;
     }
 
     _acceptor.listen(boost::asio::socket_base::max_listen_connections, ec);
-    if(ec) {
+    if (ec) {
       fail(ec, "listen");
       return;
     }
@@ -308,7 +308,7 @@ struct listener_t : public std::enable_shared_from_this<listener_t> {
 
   void run() {
     LOGGER_SERVER;
-    if(!_acceptor.is_open())
+    if (!_acceptor.is_open())
       return;
     do_accept();
   }
@@ -325,7 +325,7 @@ struct listener_t : public std::enable_shared_from_this<listener_t> {
 
   void on_accept(boost::system::error_code ec) {
     LOGGER_SERVER;
-    if(ec) {
+    if (ec) {
       fail(ec, "accept");
     } else {
       auto sgl = _wgl.lock();
@@ -388,7 +388,7 @@ void game_loop_t::add_message(std::shared_ptr<session_t> s, const std::string& m
 }
 
 void game_loop_t::on_update() {
-  LOGGER_SERVER;
+  // LOGGER_SERVER;
 
   if (!_msg_in.empty()) {
     size_t id = _msg_in.front().first;
@@ -563,13 +563,13 @@ bool action_set_name_t::from_string(size_t id, const std::string& msg) {
 
 bool action_set_name_t::process(std::shared_ptr<game_loop_t> sgl) {
   LOGGER_SERVER;
-  bool is_val_idname = std::all_of(_name.begin(), _name.end(), [](char c) {
+  bool is_valid_name = std::all_of(_name.begin(), _name.end(), [](char c) {
     return isdigit(c) || isalpha(c) || c == '_';
   });
 
   std::string msg;
 
-  if (_name.size() <= 32 && is_val_idname) {
+  if (_name.size() <= 32 && is_valid_name) {
     sgl->_sessions[_id]->_name = _name;
     msg = "<server> #" + std::to_string(_id) + " has new name \"" + _name + "\"";
     for (auto [id, session] : sgl->_sessions) {
