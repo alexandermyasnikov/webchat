@@ -147,7 +147,7 @@ struct game_loop_t : std::enable_shared_from_this<game_loop_t> {
 
 void fail(boost::system::error_code ec, char const* what) {
   LOGGER_SERVER;
-  std::cerr << what << ": " << ec.message() << "\n";
+  std::cerr << what << ": " << ec.value() << " : " << ec.message() << "\n";
 }
 
 struct session_t : public std::enable_shared_from_this<session_t> {
@@ -209,15 +209,12 @@ struct session_t : public std::enable_shared_from_this<session_t> {
 
     auto sgl = _wgl.lock();
 
-    if(ec == websocket::error::closed) {
+    if (ec) {
       if (sgl) {
         sgl->delete_session(shared_from_this());
       }
-      return;
+      return fail(ec, "read");
     }
-
-    if(ec)
-      fail(ec, "read");
 
     if (sgl) {
       std::string msg = boost::beast::buffers_to_string(_buffer_in.data());
